@@ -163,3 +163,28 @@ Again, to actually send the request you can use your favourite HTTP library.
 The response from this last request will contain the actual ~oauth_token~ and
 ~oauth_token_secret~. These you'll likely want to store in your database because
 they're the credentials you'll use to masquerade as your new user.
+** Signing requests
+Once you have your hands on both your application credentials, and a user's
+token you can send requests on behalf of that user. These requests have to be
+cryptographically signed like any other so there's a function provided to make
+this easier in your app.
+
+#+begin_src clojure
+  (one/sign-request
+   consumer
+   {:request-method :get
+    :url "https://api.twitter.com/account/verify_credentials"})
+#+end_src
+
+You can use the hash-map returned to make a request with your favourite HTTP
+client as before.
+
+#+begin_src clojure
+  (def req
+    {:request-method :get
+     :url "https://api.twitter.com/account/verify_credentials"})
+
+  (-> consumer
+      (one/sign-request req)
+      http/request)
+#+end_src
