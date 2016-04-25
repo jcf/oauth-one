@@ -166,42 +166,95 @@
 
 ;; -----------------------------------------------------------------------------
 ;; Signature generation
+;;
+;; http://oauth.googlecode.com/svn/code/javascript/example/signature.html
 
 (def ^:private test-requests
-  [
-   {:desc "With no OAuth headers"
+  [{:desc "With just OAuth headers"
     :in
-    {:url "https://example.com/"
-     :request-method :post}}
-
-   {:desc "With just OAuth headers"
-    :in
-    {:oauth-headers {"oauth_consumer_key" "abc123"
+    {:oauth-headers (sorted-map
+                     "oauth_consumer_key" "key"
                      "oauth_nonce" "nonce"
                      "oauth_signature_method" "HMAC-SHA1"
                      "oauth_timestamp" "1000"
-                     "oauth_version" "1.0"}
+                     "oauth_version" "1.0")
      :request-method :post
      :url "https://example.com/"}
-    :signature "yEzHR87PoGcUSua/F+48V/Nzd3M="}
+    :base-string
+    (str "POST&"
+         "https%3A%2F%2Fexample.com%2F&"
+         "oauth_consumer_key%3Dkey%26"
+         "oauth_nonce%3Dnonce%26"
+         "oauth_signature_method%3DHMAC-SHA1%26"
+         "oauth_timestamp%3D1000%26"
+         "oauth_version%3D1.0")
+    :signature "U1D5JKr93fRuWR5L7oNbrFu6dTk="}
 
    {:desc "With OAuth headers and form params"
     :in
     {:form-params {"status" "testing things!"}
-     :oauth-headers {"oauth_consumer_key" "abc123"
+     :oauth-headers (sorted-map
+                     "oauth_consumer_key" "key"
                      "oauth_nonce" "nonce"
                      "oauth_signature_method" "HMAC-SHA1"
                      "oauth_timestamp" "1000"
-                     "oauth_version" "1.0"}
+                     "oauth_version" "1.0")
      :request-method :post
      :url "https://example.com/"}
-    :signature "8ZoF1R8s/7JRKivUJkPs/1yhaZU="}])
+    :base-string
+    (str "POST&"
+         "https%3A%2F%2Fexample.com%2F&"
+         "oauth_consumer_key%3Dkey%26"
+         "oauth_nonce%3Dnonce%26"
+         "oauth_signature_method%3DHMAC-SHA1%26"
+         "oauth_timestamp%3D1000%26"
+         "oauth_version%3D1.0%26"
+         "status%3Dtesting%2520things%2521")
+    :signature "BMXutzedMWtnz4QgCbohPLni6Fk="}])
 
 (deftest t-sign-request
   (let [consumer (make-consumer consumer-config)]
-    (doseq [{:keys [signature in]} test-requests
+    (doseq [{:keys [base-string signature in]} test-requests
             :let [request (sign-request consumer in)
                   auth (request->auth request)]]
       (is (nil? (s/check SignedOAuthAuthorization auth)))
       (when signature
-        (is (= signature (get auth "oauth_signature" ::missing)))))))
+        (is (= signature (get auth "oauth_signature" ::missing))))
+      (when base-string
+        (is (= base-string (-> request meta :base-string)))))))
+
+(deftest t-sign-request-with-access-tokens
+  (let [consumer (make-consumer consumer-config)
+        request (sign-request
+                 consumer
+                 {:request-method :get
+                  :url
+                  (str "https://api.twitter.com/"
+                       "1.1/account/verify_credentials.json?"
+                       "include_email=true")
+                  :query-params {"skip_statuses" "true"}
+                  :oauth-headers
+                  (sorted-map
+                   "oauth_consumer_key" "key"
+                   "oauth_nonce" "nonce-nonce"
+                   "oauth_signature_method" "HMAC-SHA1"
+                   "oauth_timestamp" "1461663703"
+                   "oauth_token" "token"
+                   "oauth_version" "1.0")}
+                 "token-secret")
+        auth (request->auth request)]
+    (is (nil? (s/check SignedOAuthAuthorization auth)))
+    (is (= (str "GET&"
+                "https%3A%2F%2Fapi.twitter.com%2F"
+                "1.1%2Faccount%2Fverify_credentials.json&"
+                "include_email%3Dtrue%26"
+                "oauth_consumer_key%3Dkey%26"
+                "oauth_nonce%3Dnonce-nonce%26"
+                "oauth_signature_method%3DHMAC-SHA1%26"
+                "oauth_timestamp%3D1461663703%26"
+                "oauth_token%3Dtoken%26"
+                "oauth_version%3D1.0%26"
+                "skip_statuses%3Dtrue")
+           (-> request meta :base-string)))
+    (is (= "jhVa9z89qQ1UcOAtmAFHF+Wp1H4="
+           (get auth "oauth_signature" ::missing)))))
