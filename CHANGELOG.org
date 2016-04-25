@@ -1,0 +1,42 @@
+#+TITLE: Changes
+
+* 0.2.0
+There are some fairly significant *breaking* changes in this release for anyone
+who made direct use of ~signed-request~ and its associated schema.
+
+~signed-request~ has been renamed to ~sign-request~ and has slightly modified
+behaviour. Firstly, you can now omit OAuth headers when calling ~signed-request~
+if you're trying to send an authenticated request.
+
+#+begin_src clojure
+  (require '[oauth.one :as one])
+
+  (def consumer
+    (one/make-consumer {:key "etc"}))
+
+  (one/sign-request
+   consumer
+   {:request-method :get
+    :url "https://api.twitter.com/account/verify_credentials"})
+#+end_src
+
+You can create a header map directly via the new, public ~make-oauth-headers~
+function if you want to associate some state in before creating a signed request
+via ~sign-request~.
+
+#+begin_src clojure
+  (one/sign-request
+   consumer
+   {:request-method :get
+    :oauth-headers
+    (assoc
+     (one/make-oauth-headers consumer)
+     "oauth_extension" "etc")
+    :url "https://api.twitter.com/account/verify_credentials"})
+#+end_src
+
+You may notice, ~:oauth-headers~ used to be called ~:oauth-params~. The tests
+have been updated accordingly, and are a good place to look for up-to-date
+examples of how to use the library.
+
+In addition, the version of Schema being used has been upgraded to 1.1.0.

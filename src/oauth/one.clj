@@ -68,7 +68,7 @@
   {(s/optional-key "oauth_callback") s/Str
    (s/optional-key "oauth_token") s/Str
    (s/optional-key "oauth_verifier") s/Str
-   (s/optional-key "oauth_version") (s/eq "1.0")
+   (s/optional-key "oauth_version") s/Str
    (s/required-key "oauth_consumer_key") s/Str
    (s/required-key "oauth_nonce") s/Str
    (s/required-key "oauth_signature_method") SignatureMethod
@@ -98,9 +98,9 @@
    :url s/Str})
 
 (def ^:private OAuthRequest
-  "clj-http compatible request map with required `:oauth-params` that will be
+  "clj-http compatible request map with required `:oauth-headers` that will be
   used to generate a signature."
-  (assoc Request :oauth-params OAuthAuthorization))
+  (assoc Request (s/optional-key :oauth-headers) OAuthAuthorization))
 
 (def ^:private SignedRequest
   "Signed OAuth request with an Authorization header."
@@ -198,16 +198,26 @@
           (codec/url-encode uri)
           (codec/url-encode (codec/form-encode (filter-vals params)))))
 
-(s/defn signed-request :- SignedRequest
+(s/defn make-oauth-headers :- OAuthAuthorization
+  [consumer :- Consumer]
+  (sorted-map
+   "oauth_consumer_key"     (:key consumer)
+   "oauth_nonce"            (random/url-part 32)
+   "oauth_signature_method" (-> consumer :signature-algo signature-algos)
+   "oauth_timestamp"        (->seconds (System/currentTimeMillis))
+   "oauth_version"          "1.0"))
+
+(s/defn sign-request :- SignedRequest
   [consumer :- Consumer oauth-request :- OAuthRequest]
-  (let [{:keys [form-params request-method oauth-params url]} oauth-request
+  (let [{:keys [form-params request-method oauth-headers url]
+         :or {oauth-headers (make-oauth-headers consumer)}} oauth-request
         base-string (base-string request-method
                                  url
-                                 (merge oauth-params form-params))
-        signed-params (assoc oauth-params "oauth_signature"
+                                 (into oauth-headers form-params))
+        signed-params (assoc oauth-headers "oauth_signature"
                              (sign consumer base-string))]
     (-> oauth-request
-        (dissoc :oauth-params)
+        (dissoc :oauth-headers)
         (assoc-in [:headers "Content-Type"]
                   "application/x-www-form-urlencoded")
         (assoc-in [:headers "Authorization"]
@@ -234,16 +244,12 @@
   the same callback URI to `authorization-url`."
   ([consumer :- Consumer] (request-token-request consumer {}))
   ([consumer :- Consumer params :- RequestTokenParams]
-   (signed-request
+   (sign-request
     consumer
-    {:oauth-params
-     (sorted-map
-      "oauth_callback" (or (get params "oauth_callback") (:callback-uri consumer))
-      "oauth_consumer_key" (:key consumer)
-      "oauth_nonce" (random/url-part 32)
-      "oauth_signature_method" (-> consumer :signature-algo signature-algos)
-      "oauth_timestamp" (->seconds (System/currentTimeMillis))
-      "oauth_version" "1.0")
+    {:oauth-headers
+     (assoc
+      (make-oauth-headers consumer)
+      "oauth_callback" (get params "oauth_callback" (:callback-uri consumer)))
      :request-method :post
      :url (:request-uri consumer)})))
 
@@ -286,16 +292,11 @@
   [consumer :- Consumer
    creds :- {(s/optional-key "oauth_token") s/Str
              (s/optional-key "oauth_verifier") s/Str}]
-  (signed-request
+  (sign-request
    consumer
-   {:oauth-params
+   {:oauth-headers
     (merge
-     (sorted-map
-      "oauth_consumer_key" (:key consumer)
-      "oauth_nonce" (random/url-part 32)
-      "oauth_signature_method" (-> consumer :signature-algo signature-algos)
-      "oauth_timestamp" (->seconds (System/currentTimeMillis))
-      "oauth_version" "1.0")
+     (make-oauth-headers consumer)
      (when-let [token (get creds "oauth_token")]
        {"oauth_token" token})
      (when-let [verifier (get creds "oauth_verifier")]

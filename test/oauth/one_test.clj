@@ -4,7 +4,8 @@
             [schema.test :refer [validate-schemas]]
             [clojure.string :as str]
             [schema.core :as s]
-            [ring.util.codec :as codec]))
+            [ring.util.codec :as codec]
+            [pandect.core :as pandect]))
 
 (use-fixtures :once validate-schemas)
 
@@ -155,31 +156,42 @@
 ;; Signature generation
 
 (def ^:private test-requests
-  {"yEzHR87PoGcUSua%2FF+48V%2FNzd3M%3D"
-   {:oauth-params {"oauth_consumer_key" "abc123"
-                   "oauth_nonce" "nonce"
-                   "oauth_signature_method" "HMAC-SHA1"
-                   "oauth_timestamp" "1000"
-                   "oauth_version" "1.0"}
-    :request-method :post
-    :url "https://example.com/"}
+  [
+   {:desc "With no OAuth headers"
+    :in
+    {:url "https://example.com/"
+     :request-method :post}}
 
-   "8ZoF1R8s%2F7JRKivUJkPs%2F1yhaZU%3D"
-   {:form-params {"status" "testing things!"}
-    :oauth-params {"oauth_consumer_key" "abc123"
-                   "oauth_nonce" "nonce"
-                   "oauth_signature_method" "HMAC-SHA1"
-                   "oauth_timestamp" "1000"
-                   "oauth_version" "1.0"}
-    :request-method :post
-    :url "https://example.com/"}})
+   {:desc "With just OAuth headers"
+    :in
+    {:oauth-headers {"oauth_consumer_key" "abc123"
+                     "oauth_nonce" "nonce"
+                     "oauth_signature_method" "HMAC-SHA1"
+                     "oauth_timestamp" "1000"
+                     "oauth_version" "1.0"}
+     :request-method :post
+     :url "https://example.com/"}
+    :signature "yEzHR87PoGcUSua%2FF+48V%2FNzd3M%3D"}
 
-(deftest t-signed-request
+   {:desc "With OAuth headers and form params"
+    :in
+    {:form-params {"status" "testing things!"}
+     :oauth-headers {"oauth_consumer_key" "abc123"
+                     "oauth_nonce" "nonce"
+                     "oauth_signature_method" "HMAC-SHA1"
+                     "oauth_timestamp" "1000"
+                     "oauth_version" "1.0"}
+     :request-method :post
+     :url "https://example.com/"}
+    :signature "8ZoF1R8s%2F7JRKivUJkPs%2F1yhaZU%3D"}])
+
+(deftest t-sign-request
   (let [consumer (make-consumer consumer-config)]
-    (doseq [[signature oauth-request] test-requests]
-      (let [request (signed-request consumer oauth-request)
-            auth (-> request
-                     (get-in [:headers "Authorization"])
-                     parse-auth-header)]
-        (is (nil? (s/check SignedOAuthAuthorization auth)))
+    (doseq [{:keys [signature in]} test-requests
+            :let [request (sign-request consumer in)
+                  auth (-> request
+                           (get-in [:headers "Authorization"])
+                           parse-auth-header)]]
+      (is (nil? (s/check SignedOAuthAuthorization auth)))
+      (when signature
         (is (= signature (get auth "oauth_signature" ::missing)))))))
