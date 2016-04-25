@@ -1,11 +1,14 @@
 (ns oauth.one-test
   (:require [clojure.test :refer :all]
+            [clojure.test.check
+             [clojure-test :refer [defspec]]
+             [generators :as gen]
+             [properties :as prop]]
             [oauth.one :refer :all]
-            [schema.test :refer [validate-schemas]]
-            [clojure.string :as str]
-            [schema.core :as s]
             [ring.util.codec :as codec]
-            [pandect.core :as pandect]))
+            [schema
+             [core :as s]
+             [test :refer [validate-schemas]]]))
 
 (use-fixtures :once validate-schemas)
 
@@ -34,13 +37,11 @@
    :secret "secret"
    :signature-algo :hmac-sha1})
 
-(defn- parse-auth-header
-  [s]
-  (reduce
-   #(let [[_ k v] (re-find #"(.*?)=\"(.*?)\"" %2)]
-      (assoc %1 k v))
-   {}
-   (str/split (str/replace s #"^OAuth\s+" "") #",\s+")))
+(defn- request->auth
+  [request]
+  (-> request
+      (get-in [:headers "Authorization"])
+      parse-auth-header))
 
 (defn- parse-uri
   [^String url]
@@ -65,6 +66,22 @@
 ;; -----------------------------------------------------------------------------
 ;; Auth headers
 
+(deftest t-parse-auth-header
+  (are [s m] (= (parse-auth-header s) m)
+    "" {}
+
+    "oauth_callback=\"http%3A%2F%2Fexample.com%2Fcallback\""
+    {"oauth_callback" "http://example.com/callback"}
+
+    (str "oauth_callback=\"http%3A%2F%2Fexample.com%2Fcallback\", "
+         "oauth_nonce=\"abc123\"")
+    {"oauth_callback" "http://example.com/callback"
+     "oauth_nonce" "abc123"}))
+
+(defspec t-auth-headers-roundtrip
+  (prop/for-all [m (gen/map gen/string-alphanumeric gen/string-alphanumeric)]
+    (= m (parse-auth-header (format "OAuth %s" (auth-headers->str m))))))
+
 (deftest t-auth-headers->str
   (are [m s] (= (auth-headers->str m) s)
     {} ""
@@ -83,28 +100,25 @@
 (deftest t-request-token-request
   (let [consumer (make-consumer consumer-config)
         request (request-token-request consumer)
-        auth (-> request
-                 (get-in [:headers "Authorization"])
-                 parse-auth-header)]
+        auth (request->auth request)]
     (is (nil? (s/check SignedRequest request)))
     (is (= "http://example.com/token" (:url request)))
     (is (nil? (s/check SignedOAuthAuthorization auth)))
     (are [k v] (= (get auth k ::missing) v)
-      "oauth_callback" (codec/url-encode "http://localhost/oauth/callback")
+      "oauth_callback" "http://localhost/oauth/callback"
       "oauth_consumer_key" "key"
       "oauth_signature_method" "HMAC-SHA1")))
 
 (deftest t-request-token-request-with-callback-override
   (let [consumer (make-consumer consumer-config)
-        request (request-token-request consumer {"oauth_callback" "http://localhost/override"})
-        auth (-> request
-                 (get-in [:headers "Authorization"])
-                 parse-auth-header)]
+        request (request-token-request
+                 consumer {"oauth_callback" "http://localhost/override"})
+        auth (request->auth request)]
     (is (nil? (s/check SignedRequest request)))
     (is (= "http://example.com/token" (:url request)))
     (is (nil? (s/check SignedOAuthAuthorization auth)))
     (are [k v] (= (get auth k ::missing) v)
-      "oauth_callback" (codec/url-encode "http://localhost/override")
+      "oauth_callback" "http://localhost/override"
       "oauth_consumer_key" "key"
       "oauth_signature_method" "HMAC-SHA1")))
 
@@ -140,9 +154,7 @@
   (let [consumer (make-consumer consumer-config)
         request (access-token-request consumer {"oauth_token" "token"
                                                 "oauth_verifier" "verifier"})
-        auth (-> request
-                 (get-in [:headers "Authorization"])
-                 parse-auth-header)]
+        auth (request->auth request)]
     (is (nil? (s/check SignedRequest request)))
     (is (= "http://example.com/access" (:url request)))
     (is (nil? (s/check SignedOAuthAuthorization auth)))
@@ -171,7 +183,7 @@
                      "oauth_version" "1.0"}
      :request-method :post
      :url "https://example.com/"}
-    :signature "yEzHR87PoGcUSua%2FF+48V%2FNzd3M%3D"}
+    :signature "yEzHR87PoGcUSua/F+48V/Nzd3M="}
 
    {:desc "With OAuth headers and form params"
     :in
@@ -183,15 +195,13 @@
                      "oauth_version" "1.0"}
      :request-method :post
      :url "https://example.com/"}
-    :signature "8ZoF1R8s%2F7JRKivUJkPs%2F1yhaZU%3D"}])
+    :signature "8ZoF1R8s/7JRKivUJkPs/1yhaZU="}])
 
 (deftest t-sign-request
   (let [consumer (make-consumer consumer-config)]
     (doseq [{:keys [signature in]} test-requests
             :let [request (sign-request consumer in)
-                  auth (-> request
-                           (get-in [:headers "Authorization"])
-                           parse-auth-header)]]
+                  auth (request->auth request)]]
       (is (nil? (s/check SignedOAuthAuthorization auth)))
       (when signature
         (is (= signature (get auth "oauth_signature" ::missing)))))))
