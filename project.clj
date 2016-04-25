@@ -7,4 +7,6 @@
                  [org.clojure/clojure "1.8.0"]
                  [pandect "0.5.4"]
                  [prismatic/schema "1.1.0"]
-                 [ring/ring-codec "1.0.0"]])
+                 [ring/ring-codec "1.0.0"]]
+  :profiles
+  {:dev {:dependencies [[org.clojure/test.check "0.9.0"]]}})

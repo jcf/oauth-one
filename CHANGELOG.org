@@ -1,6 +1,21 @@
 #+TITLE: Changes
+#+STARTUP: content
 
 * 0.2.0
+** Add ~parse-auth-header~ utility function
+Add ~parse-auth-header~ function that was previously only used in the test
+suite. This function is really handy in other test suites too!
+
+#+begin_src clojure
+  (require '[oauth.one :as one])
+
+  (one/parse-auth-header "OAuth oauth_consumer_key=\"key\"")
+  ;; => {"oauth_consumer_key" "key"}
+#+end_src
+
+The function works both with and without the ~OAuth~ prefix.
+
+** Improved signed request
 There are some fairly significant *breaking* changes in this release for anyone
 who made direct use of ~signed-request~ and its associated schema.
 

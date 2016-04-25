@@ -130,6 +130,16 @@
 ;; -----------------------------------------------------------------------------
 ;; Request signing
 
+(s/defn parse-auth-header :- {s/Str s/Str}
+  "The inverse of `auth-headers->str`."
+  [s :- s/Str]
+  (reduce
+   #(if-let [[_ k v] (re-find #"(.*?)=\"(.*?)\"" %2)]
+      (assoc %1 k (codec/url-decode v))
+      %1)
+   {}
+   (str/split (str/replace s #"(?i)^oauth\s+" "") #",\s+")))
+
 (s/defn auth-headers->str :- s/Str
   "The OAuth Protocol Parameters are sent in the Authorization header the
   following way:
