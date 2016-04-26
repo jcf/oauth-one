@@ -94,6 +94,7 @@
   "A clj-http compatible request map that is also OAuth 1.0 compatible."
   {(s/optional-key :form-params) Map
    (s/optional-key :headers) {s/Str s/Str}
+   (s/optional-key :query-params) Map
    :request-method RequestMethod
    :url s/Str})
 
@@ -115,6 +116,12 @@
 (defn- filter-vals
   [m]
   (into {} (filter val m)))
+
+(s/defn ^:private split-url :- [(s/one s/Str "base-url") (s/maybe {s/Str s/Str})]
+  [url]
+  (let [uri (java.net.URI. url)]
+    [(str (.getScheme uri) "://" (.getAuthority uri) (.getPath uri))
+     (some-> uri .getQuery codec/form-decode)]))
 
 ;; -----------------------------------------------------------------------------
 ;; Consumer
@@ -166,18 +173,16 @@
   (quot millis 1000))
 
 (s/defn sign :- s/Str
-  ([consumer :- Consumer data :- s/Str]
-   (sign consumer "" data))
-  ([consumer :- Consumer token-secret :- s/Str data :- s/Str]
-   (let [{:keys [secret signature-algo]} consumer]
-     (case signature-algo
-       :hmac-sha1
-       (codec/base64-encode
-        (pandect/sha1-hmac-bytes
-         data
-         (format "%s&%s"
-                 (codec/url-encode secret)
-                 (codec/url-encode token-secret))))))))
+  [consumer :- Consumer oauth-token-secret :- (s/maybe s/Str) data :- s/Str]
+  (let [{:keys [secret signature-algo]} consumer]
+    (case signature-algo
+      :hmac-sha1
+      (codec/base64-encode
+       (pandect/sha1-hmac-bytes
+        data
+        (format "%s&%s"
+                (codec/url-encode secret)
+                (codec/url-encode (or oauth-token-secret ""))))))))
 
 (s/defn ^:private base-string :- s/Str
   "http://oauth.net/core/1.0/#anchor14
@@ -201,12 +206,17 @@
   [method :- (s/either s/Keyword s/Str)
    uri :- s/Str
    params :- Map]
-  base-string
   {:pre [(sorted? params)]}
   (format "%s&%s&%s"
           (-> method name str/upper-case)
           (codec/url-encode uri)
-          (codec/url-encode (codec/form-encode (filter-vals params)))))
+          (->> params
+               filter-vals
+               (map (fn [[k v]]
+                      (format "%s=%s" k
+                              (str/replace (codec/url-encode v) #"\+" "%20"))))
+               (str/join "&")
+               codec/url-encode)))
 
 (s/defn make-oauth-headers :- OAuthAuthorization
   [consumer :- Consumer]
@@ -218,20 +228,40 @@
    "oauth_version"          "1.0"))
 
 (s/defn sign-request :- SignedRequest
-  [consumer :- Consumer oauth-request :- OAuthRequest]
-  (let [{:keys [form-params request-method oauth-headers url]
-         :or {oauth-headers (make-oauth-headers consumer)}} oauth-request
-        base-string (base-string request-method
-                                 url
-                                 (into oauth-headers form-params))
-        signed-params (assoc oauth-headers "oauth_signature"
-                             (sign consumer base-string))]
-    (-> oauth-request
-        (dissoc :oauth-headers)
-        (assoc-in [:headers "Content-Type"]
-                  "application/x-www-form-urlencoded")
-        (assoc-in [:headers "Authorization"]
-                  (str "OAuth " (auth-headers->str signed-params))))))
+  ([consumer oauth-request]
+   (sign-request consumer oauth-request nil))
+  ([consumer :- Consumer
+    oauth-request :- OAuthRequest
+    oauth-token-secret :- (s/maybe s/Str)]
+   (let [{:keys [form-params
+                 oauth-headers
+                 query-params
+                 request-method
+                 url]} oauth-request
+
+         [base-url url-query-params] (split-url url)
+
+         base-string
+         (base-string request-method
+                      base-url
+                      (merge oauth-headers
+                             url-query-params
+                             query-params
+                             form-params))
+
+         signed-params (assoc oauth-headers "oauth_signature"
+                              (sign consumer oauth-token-secret base-string))]
+     (with-meta
+       (-> oauth-request
+           (dissoc :oauth-headers)
+           (assoc-in [:headers "Content-Type"]
+                     "application/x-www-form-urlencoded")
+           (assoc-in [:headers "Authorization"]
+                     (str "OAuth " (auth-headers->str signed-params))))
+       {:base-url base-url
+        :query-params query-params
+        :base-string base-string
+        :signed-params signed-params}))))
 
 ;; -----------------------------------------------------------------------------
 ;; Request token

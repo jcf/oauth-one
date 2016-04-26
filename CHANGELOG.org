@@ -1,6 +1,22 @@
 #+TITLE: Changes
 #+STARTUP: content
 
+* 0.3.0
+** Better support for query parameters
+Previously, only form parameters were supported as that's all I was using. Now
+that query parameters are required, you can pass params on the end of the URL,
+or in a separate map of query params.
+
+#+begin_src clojure
+  (one/sign-request
+   consumer
+   {:url "https://example.com/?foo=bar"
+    :query-params {"baz" "qux"}})
+#+end_src
+
+Both the ~foo~ parameter and ~baz~ parameters above will be merged into a single
+map of signed parameters as per the OAuth 1.0 spec.
+
 * 0.2.0
 ** Add ~parse-auth-header~ utility function
 Add ~parse-auth-header~ function that was previously only used in the test
