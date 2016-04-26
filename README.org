@@ -173,7 +173,9 @@ this easier in your app.
   (one/sign-request
    consumer
    {:request-method :get
-    :url "https://api.twitter.com/account/verify_credentials"})
+    :url "https://api.twitter.com/account/verify_credentials.json"
+    :query-params {"include_email" "true"
+                   "skip_statuses" "true"}})
 #+end_src
 
 You can use the hash-map returned to make a request with your favourite HTTP
@@ -182,7 +184,7 @@ client as before.
 #+begin_src clojure
   (def req
     {:request-method :get
-     :url "https://api.twitter.com/account/verify_credentials"})
+     :url "https://api.twitter.com/account/verify_credentials.json"})
 
   (-> consumer
       (one/sign-request req)
