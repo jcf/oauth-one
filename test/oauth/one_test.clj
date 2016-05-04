@@ -58,6 +58,14 @@
     [(str scheme "://" host path) (codec/form-decode query)]))
 
 ;; -----------------------------------------------------------------------------
+;; OAuth encode
+
+(defspec t-oauth-encode-roundtrip
+  1000
+  (prop/for-all [^String s gen/string-ascii]
+    (= (oauth-decode (oauth-encode s)))))
+
+;; -----------------------------------------------------------------------------
 ;; Nonce
 
 (def ^:private gen-int-gt-zero
