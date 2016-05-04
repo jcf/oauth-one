@@ -58,6 +58,17 @@
     [(str scheme "://" host path) (codec/form-decode query)]))
 
 ;; -----------------------------------------------------------------------------
+;; Nonce
+
+(def ^:private gen-int-gt-zero
+  (gen/such-that #(< 0 %) gen/pos-int))
+
+(defspec t-nonce
+  1000
+  (prop/for-all [n gen-int-gt-zero]
+    (re-matches (re-pattern (format "(?i)[a-z0-9]{%s}" n)) (nonce n))))
+
+;; -----------------------------------------------------------------------------
 ;; Consumer
 
 (deftest t-make-consumer

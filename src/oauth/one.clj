@@ -28,7 +28,6 @@
   For more information refer to the OAuth 1.0 specification at
   http://oauth.net/core/1.0/#signing_process."
   (:require [clojure.string :as str]
-            [crypto.random :as random]
             [pandect.core :as pandect]
             [ring.util.codec :as codec]
             [schema.core :as s]))
@@ -122,6 +121,21 @@
   (let [uri (java.net.URI. url)]
     [(str (.getScheme uri) "://" (.getAuthority uri) (.getPath uri))
      (some-> uri .getQuery codec/form-decode)]))
+
+;; -----------------------------------------------------------------------------
+;; Nonce
+
+(def ^:private ^java.util.Random secure-random
+  (java.security.SecureRandom/getInstance "SHA1PRNG"))
+
+(def ^:private nonce-chars
+  (mapv #(Character/toString (char %))
+        (concat (range 48 57) (range 65 90) (range 97 122))))
+
+(s/defn nonce :- s/Str
+  [length :- s/Int]
+  (let [n (count nonce-chars)]
+    (str/join (repeatedly length #(nth nonce-chars (.nextInt secure-random n))))))
 
 ;; -----------------------------------------------------------------------------
 ;; Consumer
@@ -222,7 +236,7 @@
   [consumer :- Consumer]
   (sorted-map
    "oauth_consumer_key"     (:key consumer)
-   "oauth_nonce"            (random/url-part 32)
+   "oauth_nonce"            (nonce 32)
    "oauth_signature_method" (-> consumer :signature-algo signature-algos)
    "oauth_timestamp"        (->seconds (System/currentTimeMillis))
    "oauth_version"          "1.0"))
