@@ -123,6 +123,23 @@
      (some-> uri .getQuery codec/form-decode)]))
 
 ;; -----------------------------------------------------------------------------
+;; OAuth encoded
+
+(s/defn oauth-encode :- s/Str
+  "Encode string according to RFC 3986."
+  [s]
+  (-> (str s)
+      (java.net.URLEncoder/encode "UTF-8")
+      (.replace "+" "%20")
+      (.replace "*" "%2A")
+      (.replace "%7E" "~")))
+
+(s/defn oauth-decode :- s/Str
+  "Decode an RFC 3986 encoded string."
+  [^String s]
+  (java.net.URLDecoder/decode s "UTF-8"))
+
+;; -----------------------------------------------------------------------------
 ;; Nonce
 
 (def ^:private ^java.util.Random secure-random
@@ -179,7 +196,7 @@
   (->> m
        (map #(format "%s=\"%s\""
                      (key %)
-                     (-> % val codec/url-encode)))
+                     (-> % val oauth-encode)))
        (str/join ", ")))
 
 (s/defn ->seconds :- s/Int
@@ -195,8 +212,8 @@
        (pandect/sha1-hmac-bytes
         data
         (format "%s&%s"
-                (codec/url-encode secret)
-                (codec/url-encode (or oauth-token-secret ""))))))))
+                (oauth-encode secret)
+                (oauth-encode (or oauth-token-secret ""))))))))
 
 (s/defn ^:private base-string :- s/Str
   "http://oauth.net/core/1.0/#anchor14
@@ -223,14 +240,13 @@
   {:pre [(sorted? params)]}
   (format "%s&%s&%s"
           (-> method name str/upper-case)
-          (codec/url-encode uri)
+          (oauth-encode uri)
           (->> params
                filter-vals
                (map (fn [[k v]]
-                      (format "%s=%s" k
-                              (str/replace (codec/url-encode v) #"\+" "%20"))))
+                      (format "%s=%s" k (oauth-encode (str v)))))
                (str/join "&")
-               codec/url-encode)))
+               oauth-encode)))
 
 (s/defn make-oauth-headers :- OAuthAuthorization
   [consumer :- Consumer]

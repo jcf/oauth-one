@@ -1,6 +1,12 @@
 #+TITLE: Changes
 #+STARTUP: content
 
+* 0.5.0
+Fix escaping of characters by sticking more closely to [[https://www.ietf.org/rfc/rfc3986.txt][RFC 3986]].
+
+This release also removes the dependency on crypto-random, as we now generate
+nonces more directly.
+
 * 0.4.0
 Avoid non-word characters in nonces.
 
