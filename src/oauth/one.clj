@@ -114,7 +114,7 @@
 
 (defn- filter-vals
   [m]
-  (into {} (filter val m)))
+  (into (empty m) (filter val m)))
 
 (s/defn ^:private split-url :- [(s/one s/Str "base-url") (s/maybe {s/Str s/Str})]
   [url]

@@ -8,7 +8,8 @@
             [ring.util.codec :as codec]
             [schema
              [core :as s]
-             [test :refer [validate-schemas]]]))
+             [test :refer [validate-schemas]]]
+            [clojure.string :as str]))
 
 (use-fixtures :once validate-schemas)
 
@@ -69,7 +70,7 @@
 ;; Nonce
 
 (def ^:private gen-int-gt-zero
-  (gen/such-that #(< 0 %) gen/pos-int))
+  (gen/such-that #(< 0 ^int %) gen/pos-int))
 
 (defspec t-nonce
   1000
@@ -250,8 +251,9 @@
                   :url
                   (str "https://api.twitter.com/"
                        "1.1/account/verify_credentials.json?"
+                       "include_entities=false&"
                        "include_email=true")
-                  :query-params {"skip_statuses" "true"}
+                  :query-params {"skip_status" "true"}
                   :oauth-headers
                   (sorted-map
                    "oauth_consumer_key" "key"
@@ -267,13 +269,18 @@
                 "https%3A%2F%2Fapi.twitter.com%2F"
                 "1.1%2Faccount%2Fverify_credentials.json&"
                 "include_email%3Dtrue%26"
+                "include_entities%3Dfalse%26"
                 "oauth_consumer_key%3Dkey%26"
                 "oauth_nonce%3Dnonce-nonce%26"
                 "oauth_signature_method%3DHMAC-SHA1%26"
                 "oauth_timestamp%3D1461663703%26"
                 "oauth_token%3Dtoken%26"
                 "oauth_version%3D1.0%26"
-                "skip_statuses%3Dtrue")
-           (-> request meta :base-string)))
-    (is (= "jhVa9z89qQ1UcOAtmAFHF+Wp1H4="
+                "skip_status%3Dtrue")
+           (-> request meta :base-string))
+        (str "Base string:\n"
+             (-> request meta :base-string
+                 (str/replace #"\&" "&\n")
+                 (str/replace #"%26" "%26\n"))))
+    (is (= "mucZ0PQVtMPeoZTk9cFRC0si1XU="
            (get auth "oauth_signature" ::missing)))))
