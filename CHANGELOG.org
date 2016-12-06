@@ -1,6 +1,30 @@
 #+TITLE: Changes
 #+STARTUP: content
 
+* 0.7.0
+Upgrade external dependencies to make sure everything's compatible with cutting
+edge.
+
+The test suite passed before and after this change. In theory it shouldn't cause
+anyone any problems but it's worth double checking for dependency conflicts if
+you or another dependency pull in Pandect as they've recently made a fairly
+major change to the way they interact with Bouncy Castle.
+
+You should be able to use the previous version numbers of any dependencies
+should you not want to upgrade. Just add exclusions to the ~oauth/oauth-one~
+artefact in your dependencies.
+
+#+begin_src clojure
+  [oauth/oauth-one "0.7.0" :exclusions [org.bouncycastle/bcprov-jdk15on
+                                        org.clojure/clojure
+                                        pandect
+                                        prismatic/schema
+                                        ring/ring-codec]]
+#+end_src
+
+Make sure to only exclude dependencies you require elsewhere! These dependencies
+have to be loaded by something for this library to work.
+
 * 0.6.0
 *No breaking changes.*
 
