@@ -1,6 +1,40 @@
 #+TITLE: Changes
 #+STARTUP: content
 
+* 0.6.0
+*No breaking changes.*
+
+You can now sign request more easily. Previously, you'd have to create OAuth
+headers yourself, and associate in the OAuth token from an access token. Then
+you'd need to pass in your access token secret for the signing process. The
+whole dance looked something like this:
+
+#+begin_src clojure
+  (one/sign-request (one/make-consumer config)
+                    {:oauth-headers (merge (one/make-oauth-headers consumer)
+                                           {"oauth_token" token})
+                     :request-method :get
+                     :url "https://www.example.com/api"}
+                    secret)
+#+end_src
+
+Based on feedback from @ilevd it was apparent this is a little clunky, and
+exposing the OAuth protocol wasn't very user friendly so I've extended
+~sign-request~ to support both the old version and this easier API:
+
+#+begin_src clojure
+  (one/sign-request (one/make-consumer config)
+                    {:request-method :get
+                     :url "https://www.example.com/api"}
+                    {:token "access-token"
+                     :secret "access-token-secret"})
+#+end_src
+
+Notice that you can pass an access token map as the third argument to
+~sign-request~, and internally we juggle things around to do the right thing.
+
+And, you can still pass in OAuth headers inside the request map if you so wish.
+
 * 0.5.0
 Fix escaping of characters by sticking more closely to [[https://www.ietf.org/rfc/rfc3986.txt][RFC 3986]].
 
