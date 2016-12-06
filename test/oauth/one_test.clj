@@ -284,3 +284,40 @@
                  (str/replace #"%26" "%26\n"))))
     (is (= "mucZ0PQVtMPeoZTk9cFRC0si1XU="
            (get auth "oauth_signature" ::missing)))))
+
+(deftest t-easy-sign-request-with-access-tokens
+  (let [consumer (make-consumer consumer-config)
+        url (str "https://api.twitter.com/"
+                 "1.1/account/verify_credentials.json?"
+                 "include_entities=false&"
+                 "include_email=true")
+        access-token {:token "token"
+                      :secret "token-secret"}
+        request (sign-request consumer
+                              {:request-method :get
+                               :url url
+                               :query-params {"skip_status" "true"}}
+                              access-token)
+        auth (request->auth request)]
+    (is (nil? (s/check SignedOAuthAuthorization auth))
+        (with-out-str (clojure.pprint/pprint auth)))
+    (is (string? (get auth "oauth_signature" ::missing)))))
+
+(deftest t-sign-request-with-unsupported-access-token
+  (let [consumer (make-consumer consumer-config)
+        url "https://api.twitter.com/"
+        access-token :nope
+        request #(sign-request consumer
+                               {:request-method :get
+                                :url url
+                                :query-params {"skip_status" "true"}}
+                               access-token)]
+    (s/without-fn-validation
+     (when (is (thrown? IllegalArgumentException (request)))
+       (try
+         (request)
+         (catch IllegalArgumentException exception
+           (is (= (str "access-token passed to `sign-request` "
+                       "must be a map of `:token` and `:secret`, "
+                       "or an access token secret as a string.")
+                  (.getMessage exception)))))))))
