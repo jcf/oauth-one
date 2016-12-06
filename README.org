@@ -171,23 +171,14 @@ cryptographically signed like any other so there's a function provided to make
 this easier in your app.
 
 #+begin_src clojure
-  (one/sign-request
-   consumer
-   {:request-method :get
-    :url "https://api.twitter.com/account/verify_credentials.json"
-    :query-params {"include_email" "true"
-                   "skip_statuses" "true"}})
+  (let [request {:request-method :get
+                 :url "https://api.twitter.com/account/verify_credentials.json"
+                 :query-params {"include_email" "true"
+                                "skip_statuses" "true"}}
+        access-token {:token "access-token"
+                      :secret "access-token-secret"}]
+    (one/sign-request consumer request access-token))
 #+end_src
 
 You can use the hash-map returned to make a request with your favourite HTTP
 client as before.
-
-#+begin_src clojure
-  (def req
-    {:request-method :get
-     :url "https://api.twitter.com/account/verify_credentials.json"})
-
-  (-> consumer
-      (one/sign-request req)
-      http/request)
-#+end_src

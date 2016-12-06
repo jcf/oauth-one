@@ -109,6 +109,15 @@
          {(s/required-key "Authorization") s/Str
           s/Str s/Str}))
 
+(def ^:private AccessToken
+  {(s/optional-key :token) (s/maybe s/Str)
+   (s/optional-key :secret) (s/maybe s/Str)})
+
+(def ^:private AccessTokenArg
+  (s/conditional
+   map? AccessToken
+   :else s/Str))
+
 ;; -----------------------------------------------------------------------------
 ;; Utils
 
@@ -201,7 +210,7 @@
 
 (s/defn ->seconds :- s/Int
   [millis :- s/Int]
-  (quot millis 1000))
+  (quot ^int millis 1000))
 
 (s/defn sign :- s/Str
   [consumer :- Consumer oauth-token-secret :- (s/maybe s/Str) data :- s/Str]
@@ -257,30 +266,23 @@
    "oauth_timestamp"        (->seconds (System/currentTimeMillis))
    "oauth_version"          "1.0"))
 
-(s/defn sign-request :- SignedRequest
-  ([consumer oauth-request]
-   (sign-request consumer oauth-request nil))
+(s/defn ^:private sign-request-impl :- SignedRequest
+  ([consumer oauth-request] (sign-request-impl consumer oauth-request {}))
   ([consumer :- Consumer
     oauth-request :- OAuthRequest
-    oauth-token-secret :- (s/maybe s/Str)]
+    access-token :- AccessToken]
    (let [{:keys [form-params
                  oauth-headers
                  query-params
                  request-method
                  url]} oauth-request
-
+         {access-token-secret :secret} access-token
          [base-url url-query-params] (split-url url)
-
-         base-string
-         (base-string request-method
-                      base-url
-                      (merge oauth-headers
-                             url-query-params
-                             query-params
-                             form-params))
-
-         signed-params (assoc oauth-headers "oauth_signature"
-                              (sign consumer oauth-token-secret base-string))]
+         params (merge oauth-headers url-query-params query-params form-params)
+         base-string (base-string request-method base-url params)
+         signed-params (assoc oauth-headers
+                              "oauth_signature"
+                              (sign consumer access-token-secret base-string))]
      (with-meta
        (-> oauth-request
            (dissoc :oauth-headers)
@@ -292,6 +294,42 @@
         :query-params query-params
         :base-string base-string
         :signed-params signed-params}))))
+
+(s/defn ^:private normalize-access-token-arg :- AccessToken
+  [x :- (s/maybe AccessTokenArg)]
+  (cond
+    (and (map? x) (contains? x :token) (contains? x :secret)) x
+    (string? x) {:secret x}
+    (nil? x) {}
+    :else (throw (IllegalArgumentException.
+                  (str "access-token passed to `sign-request` must be a map of "
+                       "`:token` and `:secret`, or "
+                       "an access token secret as a string.")))))
+
+(s/defn sign-request :- SignedRequest
+  ([consumer oauth-request]
+   (sign-request consumer oauth-request nil))
+  ([consumer :- Consumer
+    {:keys [oauth-headers] :as oauth-request} :- OAuthRequest
+    access-token-arg :- (s/maybe AccessTokenArg)]
+   (let [;; In order to support both the string and map version of the
+         ;; `access-token` we need to normalise the input into the preferred map
+         ;; form.
+         ;;
+         ;; If the token is something other than a valid map or string we throw
+         ;; an `IllegalArgumentException`.
+         {:keys [token]
+          :as access-token} (normalize-access-token-arg access-token-arg)
+         ;; To allow optional `oauth-headers` from users calling this function
+         ;; directly we conditionally use a new map of sorted OAuth headers.
+         ;;
+         ;; When we've got an OAuth token to sign the request with, we add that
+         ;; to the OAuth headers for use in `sign-request-impl`.
+         oauth-headers (cond-> (or oauth-headers (make-oauth-headers consumer))
+                         (some? token) (assoc "oauth_token" token))]
+     (sign-request-impl consumer
+                        (assoc oauth-request :oauth-headers oauth-headers)
+                        access-token))))
 
 ;; -----------------------------------------------------------------------------
 ;; Request token
@@ -314,7 +352,7 @@
   the same callback URI to `authorization-url`."
   ([consumer :- Consumer] (request-token-request consumer {}))
   ([consumer :- Consumer params :- RequestTokenParams]
-   (sign-request
+   (sign-request-impl
     consumer
     {:oauth-headers
      (assoc
@@ -362,7 +400,7 @@
   [consumer :- Consumer
    creds :- {(s/optional-key "oauth_token") s/Str
              (s/optional-key "oauth_verifier") s/Str}]
-  (sign-request
+  (sign-request-impl
    consumer
    {:oauth-headers
     (merge
